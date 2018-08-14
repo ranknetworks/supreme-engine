@@ -1,0 +1,2753 @@
+import scrapy
+from scrapy.crawler import CrawlerProcess
+
+from scrapy.contrib.spiders import CrawlSpider, Rule
+from scrapy.linkextractors.lxmlhtml import LxmlLinkExtractor
+from scrapy.selector import Selector
+#from emailext.items import EmailextItem
+import re
+from urllib.parse import urlsplit
+from urllib.parse import urlparse
+
+from scrapy.utils.project import get_project_settings
+from scrapy.exceptions import DropItem
+from scrapy.http.request import Request
+
+from validate_email import validate_email
+
+import time
+import requests
+import MySQLdb
+
+
+db = MySQLdb.connect("localhost","root","","mydatabase" )
+
+cursor = db.cursor()
+
+
+# Clean uncrawlable domains from the DB.
+update = "SELECT * FROM websites WHERE crawled=1 ORDER BY id DESC LIMIT 1"
+cursor.execute(update)
+
+results = cursor.fetchall()
+
+idToDel = cursor.fetchall()
+idToDel = results[0][0]
+
+# Prepare SQL query to UPDATE crawl status
+update = "UPDATE websites SET crawled = 1 WHERE id < '%d'" % (idToDel)
+cursor.execute(update)
+db.commit()
+
+
+# GET PROSPECTS TABLE FROM SQL
+sql = "SELECT * FROM websites WHERE crawled = 0 LIMIT 51"
+
+# EXECUTE
+cursor.execute(sql)
+
+# FETCH ALL
+results = cursor.fetchall()
+
+
+urls = []
+domains = []
+ids = []
+keywords = []
+
+for website in results:
+    #time.sleep(1)
+
+    #if the site hasn't been crawled yet
+    if website[3] == 0:
+        domain = website[2]
+
+        domain = urlsplit(domain)[1].split(':')[0]
+
+        # Get the id of the website
+        id = website[0]
+
+        # Get the keyword which the site ranks for
+        keyword = website[1]
+
+        keywords.append(keyword)
+        ids.append(id)
+        urls.append(website[2])
+        domains.append(website)
+
+
+
+"""
+print(urls[0])
+print(domains[0][2])
+"""
+
+class EmailextItem(scrapy.Item):
+    # define the fields for your item here like:
+    email = scrapy.Field()
+    url = scrapy.Field()
+    keyword = scrapy.Field()
+    pass
+
+class EmailextPipeline(object):
+    def process_item(self, item, spider):
+        return item
+
+class DuplicatesPipeline(object):
+
+    def __init__(self):
+         self.email_seen = set()
+
+    def process_item(self, item, spider):
+        if str(item['email']) in self.email_seen:
+            raise DropItem("Duplicate item found: %s" % item)
+        else:
+            self.email_seen.add(item['email'])
+            return item
+
+class ValidatePipeline(object):
+
+    def process_item(self, item, spider):
+
+        is_valid = validate_email(str(item["email"]))
+        if is_valid:
+            return item
+        else:
+            raise DropItem("email isnt valid %s" % item)
+
+"""
+        if re.match(r"[^@]+@[^@]+\.[^@]+", str(item["email"])):
+            return item
+        else:
+            raise DropItem("email isnt valid %s" % item)
+"""
+
+class crawlOne(CrawlSpider):
+    name = "basic"
+
+    start_urls = [urls[0]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[0][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[0][2]
+        item["keyword"] = keywords[0]
+        items.append(item)
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[0])
+        cursor.execute(update)
+        db.commit()
+
+        return items
+
+
+class crawlTwo(CrawlSpider):
+    name = "basic2"
+
+    start_urls = [urls[1]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[1][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[1][2]
+        item["keyword"] = keywords[1]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[1])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawlThree(CrawlSpider):
+    name = "basic3"
+
+    start_urls = [urls[2]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[2][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[2][2]
+        item["keyword"] = keywords[2]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[2])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawlFour(CrawlSpider):
+    name = "basic4"
+
+    start_urls = [urls[3]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[3][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[3][2]
+        item["keyword"] = keywords[3]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[3])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawlFive(CrawlSpider):
+    name = "basic5"
+
+    start_urls = [urls[4]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[4][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[4][2]
+        item["keyword"] = keywords[4]
+
+        items.append(item)
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[4])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawlSix(CrawlSpider):
+    name = "basic6"
+
+    start_urls = [urls[5]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[5][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[5][2]
+        item["keyword"] = keywords[5]
+
+        items.append(item)
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[5])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawlSeven(CrawlSpider):
+    name = "basic7"
+
+    start_urls = [urls[6]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[6][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[6][2]
+        item["keyword"] = keywords[6]
+
+        items.append(item)
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[6])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawlEight(CrawlSpider):
+    name = "basic8"
+
+    start_urls = [urls[7]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[7][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[7][2]
+        item["keyword"] = keywords[7]
+
+        items.append(item)
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[7])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawlNine(CrawlSpider):
+    name = "basic9"
+
+    start_urls = [urls[8]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[8][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[8][2]
+        item["keyword"] = keywords[8]
+
+        items.append(item)
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[8])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawlTen(CrawlSpider):
+    name = "basic10"
+
+    start_urls = [urls[9]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[9][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[9][2]
+        item["keyword"] = keywords[9]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[9])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+
+class crawl11(CrawlSpider):
+    name = "basic11"
+
+    start_urls = [urls[10]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[10][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[10][2]
+        item["keyword"] = keywords[10]
+
+        items.append(item)
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[10])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+
+
+class crawl12(CrawlSpider):
+
+    name = "basic12"
+
+    start_urls = [urls[11]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[11][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[11][2]
+        item["keyword"] = keywords[11]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[11])
+        cursor.execute(update)
+        db.commit()
+
+
+
+        return items
+
+
+
+
+class crawl13(CrawlSpider):
+
+    name = "basic13"
+
+    start_urls = [urls[12]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[12][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[12][2]
+        item["keyword"] = keywords[12]
+
+        items.append(item)
+
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[12])
+        cursor.execute(update)
+        db.commit()
+
+
+
+        return items
+
+
+
+class crawl14(CrawlSpider):
+
+    name = "basic14"
+
+    start_urls = [urls[13]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[13][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[13][2]
+        item["keyword"] = keywords[13]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[13])
+        cursor.execute(update)
+        db.commit()
+
+
+
+        return items
+
+
+
+class crawl15(CrawlSpider):
+
+    name = "basic15"
+
+    start_urls = [urls[14]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[14][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[14][2]
+        item["keyword"] = keywords[14]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[14])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+
+
+class crawl16(CrawlSpider):
+
+    name = "basic16"
+
+    start_urls = [urls[15]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[15][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[15][2]
+        item["keyword"] = keywords[15]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[15])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+
+
+class crawl17(CrawlSpider):
+
+    name = "basic17"
+
+    start_urls = [urls[16]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[16][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[16][2]
+        item["keyword"] = keywords[16]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[16])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+
+
+class crawl18(CrawlSpider):
+
+    name = "basic18"
+
+    start_urls = [urls[17]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[17][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[17][2]
+        item["keyword"] = keywords[17]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[17])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+
+
+class crawl19(CrawlSpider):
+
+    name = "basic19"
+
+    start_urls = [urls[18]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[18][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[18][2]
+        item["keyword"] = keywords[18]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[18])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+
+
+
+class crawl20(CrawlSpider):
+
+    name = "basic20"
+
+    start_urls = [urls[19]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[19][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[19][2]
+        item["keyword"] = keywords[19]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[19])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+
+
+class crawl21(CrawlSpider):
+
+    name = "basic21"
+
+    start_urls = [urls[20]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[20][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[20][2]
+        item["keyword"] = keywords[20]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[20])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+
+class crawl22(CrawlSpider):
+
+    name = "basic22"
+
+    start_urls = [urls[21]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[21][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[21][2]
+        item["keyword"] = keywords[21]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[21])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+
+
+class crawl23(CrawlSpider):
+
+    name = "basic23"
+
+    start_urls = [urls[22]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[22][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[22][2]
+        item["keyword"] = keywords[22]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[22])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+
+
+
+class crawl24(CrawlSpider):
+
+    name = "basic24"
+
+    start_urls = [urls[23]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[23][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[23][2]
+        item["keyword"] = keywords[23]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[23])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+
+
+class crawl25(CrawlSpider):
+
+    name = "basic25"
+
+    start_urls = [urls[24]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[24][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[24][2]
+        item["keyword"] = keywords[24]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[24])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+
+
+
+
+
+class crawl26(CrawlSpider):
+
+    name = "basic26"
+
+    start_urls = [urls[25]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[25][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[25][2]
+        item["keyword"] = keywords[25]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[25])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+
+
+
+
+
+class crawl27(CrawlSpider):
+
+    name = "basic27"
+
+    start_urls = [urls[26]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[26][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[26][2]
+        item["keyword"] = keywords[26]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[26])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+
+
+
+class crawl28(CrawlSpider):
+
+    name = "basic28"
+
+    start_urls = [urls[27]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[27][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[27][2]
+        item["keyword"] = keywords[27]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[27])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+
+
+class crawl29(CrawlSpider):
+
+    name = "basic29"
+
+    start_urls = [urls[28]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[28][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[28][2]
+        item["keyword"] = keywords[28]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[28])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+
+
+
+class crawl30(CrawlSpider):
+
+    name = "basic30"
+
+    start_urls = [urls[29]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[29][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[29][2]
+        item["keyword"] = keywords[29]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[29])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+
+
+
+class crawl31(CrawlSpider):
+
+    name = "basic31"
+    num = int(30)
+
+    start_urls = [urls[num]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[num][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[num][2]
+        item["keyword"] = keywords[num]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[num])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawl32(CrawlSpider):
+
+    name = "basic32"
+    num = int(31)
+
+    start_urls = [urls[num]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[num][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[num][2]
+        item["keyword"] = keywords[num]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[num])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawl33(CrawlSpider):
+
+    name = "basic33"
+    num = int(32)
+
+    start_urls = [urls[num]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[num][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[num][2]
+        item["keyword"] = keywords[num]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[num])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawl34(CrawlSpider):
+
+    name = "basic34"
+    num = int(33)
+
+    start_urls = [urls[num]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[num][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[num][2]
+        item["keyword"] = keywords[num]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[num])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawl35(CrawlSpider):
+
+    name = "basic35"
+    num = int(34)
+
+    start_urls = [urls[num]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[num][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[num][2]
+        item["keyword"] = keywords[num]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[num])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawl36(CrawlSpider):
+
+    name = "basic36"
+    num = int(35)
+
+    start_urls = [urls[num]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[num][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[num][2]
+        item["keyword"] = keywords[num]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[num])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawl37(CrawlSpider):
+
+    name = "basic37"
+    num = int(36)
+
+    start_urls = [urls[num]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[num][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[num][2]
+        item["keyword"] = keywords[num]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[num])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawl38(CrawlSpider):
+
+    name = "basic38"
+    num = int(37)
+
+    start_urls = [urls[num]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[num][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[num][2]
+        item["keyword"] = keywords[num]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[num])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawl39(CrawlSpider):
+
+    name = "basic39"
+    num = int(38)
+
+    start_urls = [urls[num]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[num][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[num][2]
+        item["keyword"] = keywords[num]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[num])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawl40(CrawlSpider):
+
+    name = "basic40"
+    num = int(39)
+
+    start_urls = [urls[num]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[num][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[num][2]
+        item["keyword"] = keywords[num]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[num])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawl41(CrawlSpider):
+
+    name = "basic41"
+    num = int(40)
+
+    start_urls = [urls[num]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[num][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[num][2]
+        item["keyword"] = keywords[num]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[num])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawl42(CrawlSpider):
+
+    name = "basic42"
+    num = int(41)
+
+    start_urls = [urls[num]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[num][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[num][2]
+        item["keyword"] = keywords[num]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[num])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawl43(CrawlSpider):
+
+    name = "basic43"
+    num = int(42)
+
+    start_urls = [urls[num]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[num][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[num][2]
+        item["keyword"] = keywords[num]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[num])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawl44(CrawlSpider):
+
+    name = "basic44"
+    num = int(43)
+
+    start_urls = [urls[num]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[num][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[num][2]
+        item["keyword"] = keywords[num]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[num])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawl45(CrawlSpider):
+
+    name = "basic45"
+    num = int(44)
+
+    start_urls = [urls[num]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[num][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[num][2]
+        item["keyword"] = keywords[num]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[num])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawl46(CrawlSpider):
+
+    name = "basic46"
+    num = int(45)
+
+    start_urls = [urls[num]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[num][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[num][2]
+        item["keyword"] = keywords[num]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[num])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawl47(CrawlSpider):
+
+    name = "basic47"
+    num = int(46)
+
+    start_urls = [urls[num]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[num][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[num][2]
+        item["keyword"] = keywords[num]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[num])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawl48(CrawlSpider):
+
+    name = "basic48"
+    num = int(47)
+
+    start_urls = [urls[num]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[num][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[num][2]
+        item["keyword"] = keywords[num]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[num])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawl49(CrawlSpider):
+
+    name = "basic49"
+    num = int(48)
+
+    start_urls = [urls[num]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[num][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[num][2]
+        item["keyword"] = keywords[num]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[num])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+class crawl50(CrawlSpider):
+
+    name = "basic50"
+    num = int(49)
+
+    start_urls = [urls[num]]
+
+    rules = (
+        Rule (
+            LxmlLinkExtractor(
+                allow=(domains[num][2]),
+                deny=(
+                    "google.com",
+                    "facebook.com",
+                    "pinterest.com",
+                    "facebook.com",
+                    "digg.com",
+                    "twitter.com",
+                    "stumbleupon.com",
+                    "linkedin.com"
+                ),
+                unique=False
+
+            ),
+        callback="parse_items",
+        follow= True,
+        ),
+    )
+
+    def parse_items(self, response):
+        items = []
+        item = EmailextItem()
+        htt = response.body.decode('utf-8')
+
+        #item["email"] = response.xpath('//body').re('([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
+        item["email"] = re.findall('[\w\.-]+@[\w\.-]+', htt)[0]
+        item["url"] = domains[num][2]
+        item["keyword"] = keywords[num]
+
+        items.append(item)
+
+
+        # Prepare SQL query to UPDATE crawl status
+        update = "UPDATE websites SET crawled = 1 WHERE id = '%d'" % (ids[num])
+        cursor.execute(update)
+        db.commit()
+
+
+        return items
+
+
+
+
+# instantiate settings and provide a custom configuration
+settings = get_project_settings()
+settings.set('ITEM_PIPELINES', {
+    'emailext.pipelines.DuplicatesPipeline': 1,
+    'emailext.pipelines.ValidatePipeline': 2,
+    'scrapy_mysql_pipeline.MySQLPipeline': 3,
+})
+
+process = CrawlerProcess(settings)
+
+process.crawl(crawlOne)
+process.crawl(crawlTwo)
+process.crawl(crawlThree)
+process.crawl(crawlFour)
+process.crawl(crawlFive)
+process.crawl(crawlSix)
+process.crawl(crawlSeven)
+process.crawl(crawlEight)
+process.crawl(crawlNine)
+process.crawl(crawlTen)
+process.crawl(crawl11)
+process.crawl(crawl12)
+process.crawl(crawl13)
+process.crawl(crawl14)
+process.crawl(crawl15)
+process.crawl(crawl16)
+process.crawl(crawl17)
+process.crawl(crawl18)
+process.crawl(crawl19)
+process.crawl(crawl20)
+process.crawl(crawl21)
+process.crawl(crawl22)
+process.crawl(crawl23)
+process.crawl(crawl24)
+process.crawl(crawl25)
+process.crawl(crawl26)
+process.crawl(crawl27)
+process.crawl(crawl28)
+process.crawl(crawl29)
+process.crawl(crawl30)
+process.crawl(crawl31)
+process.crawl(crawl32)
+process.crawl(crawl33)
+process.crawl(crawl34)
+process.crawl(crawl35)
+process.crawl(crawl36)
+process.crawl(crawl37)
+process.crawl(crawl38)
+process.crawl(crawl39)
+process.crawl(crawl40)
+process.crawl(crawl41)
+process.crawl(crawl42)
+process.crawl(crawl43)
+process.crawl(crawl44)
+process.crawl(crawl45)
+process.crawl(crawl46)
+process.crawl(crawl47)
+process.crawl(crawl48)
+process.crawl(crawl49)
+process.crawl(crawl50)
+
+
+
+process.start() # the script will block here until the crawling is finished
+#process.start(stop_after_crawl=False) # the script will block here until the crawling is finished
+
+
+for i in range(3):
+    print(ids[29])
+
+
+# disconnect from server
+db.close()
+
